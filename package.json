@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.3",
+    "@vercel/kv": "^3.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "jose": "^5.9.6",

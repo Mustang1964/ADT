@@ -86,25 +86,73 @@ export default function DashboardPage() {
     checkSession();
   }, [router]);
 
-  // Load tasks & base balance from storage
+  // Load tasks & base balance from cloud with localStorage fallback and sync
   useEffect(() => {
-    const loaded = loadTasksFromStorage();
-    const loadedBase = loadBaseBalanceFromStorage();
-    setTasks(loaded);
-    setBaseBalance(loadedBase);
-    setIsTasksLoaded(true);
+    async function loadData() {
+      // 1. Initial fast local load
+      const localTasks = loadTasksFromStorage();
+      const localBase = loadBaseBalanceFromStorage();
+      setTasks(localTasks);
+      setBaseBalance(localBase);
+      setIsTasksLoaded(true);
+
+      // 2. Fetch fresh data from Cloud Server
+      try {
+        const res = await fetch('/api/data/sync');
+        if (res.ok) {
+          const cloud = await res.json();
+          if (cloud.success) {
+            // If cloud has data, sync it
+            if (Array.isArray(cloud.tasks) && cloud.tasks.length > 0) {
+              setTasks(cloud.tasks);
+              saveTasksToStorage(cloud.tasks);
+            } else if (localTasks.length > 0) {
+              // Push local tasks to cloud if cloud is empty
+              fetch('/api/data/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tasks: localTasks, baseBalance: localBase }),
+              }).catch(() => {});
+            }
+
+            if (typeof cloud.baseBalance === 'number') {
+              setBaseBalance(cloud.baseBalance);
+              saveBaseBalanceToStorage(cloud.baseBalance);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Cloud sync error, using local data', err);
+      }
+    }
+
+    loadData();
   }, []);
 
-  // Save tasks on state changes
+  // Save tasks on state changes & push to cloud
   const updateTasks = (newTasks: TaskItem[]) => {
     setTasks(newTasks);
     saveTasksToStorage(newTasks);
+
+    // Sync to cloud in background
+    fetch('/api/data/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tasks: newTasks }),
+    }).catch((err) => console.error('Cloud task sync failed:', err));
   };
 
-  // Base balance updater
+  // Base balance updater & push to cloud
   const handleSaveBaseBalance = (newBase: number) => {
     setBaseBalance(newBase);
     saveBaseBalanceToStorage(newBase);
+
+    // Sync to cloud in background
+    fetch('/api/data/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseBalance: newBase }),
+    }).catch((err) => console.error('Cloud balance sync failed:', err));
   };
 
   // Quick transaction adder
