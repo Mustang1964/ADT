@@ -5,7 +5,8 @@ export const metadata: Metadata = {
   title: 'ADT — График занятости & Финансовый учет',
   description: 'Персональная платформа для ведения личного графика занятости на день, неделю, месяц, год с учетом доходов и расходов.',
   icons: {
-    icon: '/favicon.ico',
+    icon: '/favicon.jpg',
+    apple: '/favicon.jpg',
   },
 };
 
