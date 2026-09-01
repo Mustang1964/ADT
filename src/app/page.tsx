@@ -307,6 +307,13 @@ export default function DashboardPage() {
     updateTasks(updated);
   };
 
+  const handleDeleteTasks = (taskIds: string[]) => {
+    if (userRole === 'guest' || taskIds.length === 0) return;
+    const idSet = new Set(taskIds);
+    const updated = tasks.filter((t) => !idSet.has(t.id));
+    updateTasks(updated);
+  };
+
   const handleSelectDay = (day: Date) => {
     setCurrentDate(day);
     setViewMode('day');
@@ -461,6 +468,9 @@ export default function DashboardPage() {
         onClose={() => setIsAnalyticsModalOpen(false)}
         summary={periodSummary}
         tasks={tasks}
+        userRole={userRole}
+        onDeleteTask={handleDeleteTask}
+        onDeleteTasks={handleDeleteTasks}
       />
 
       <BackupModal

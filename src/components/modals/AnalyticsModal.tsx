@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { FinancialSummary, TaskItem, ActivityCategory } from '@/types';
+import { FinancialSummary, TaskItem, ActivityCategory, UserRole } from '@/types';
 import { formatRawCurrency, formatCurrency } from '@/lib/utils';
 import {
   X,
@@ -17,6 +17,10 @@ import {
   Tag,
   Layers,
   Sparkles,
+  Trash2,
+  CheckSquare,
+  Square,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -52,6 +56,9 @@ interface AnalyticsModalProps {
   onClose: () => void;
   summary: FinancialSummary;
   tasks: TaskItem[];
+  userRole?: UserRole;
+  onDeleteTask?: (taskId: string) => void;
+  onDeleteTasks?: (taskIds: string[]) => void;
 }
 
 type PeriodPreset = 'all' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'custom';
@@ -61,6 +68,9 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   isOpen,
   onClose,
   tasks,
+  userRole = 'admin',
+  onDeleteTask,
+  onDeleteTasks,
 }) => {
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -70,6 +80,14 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'timeline'>('bar');
   const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
+
+  // Deletion mode state
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [confirmDeleteModal, setConfirmDeleteModal] = useState<{ open: boolean; ids: string[]; isSingle?: boolean }>({
+    open: false,
+    ids: [],
+  });
 
   // Filter tasks based on all active filters
   const filteredTasks = useMemo(() => {
@@ -235,11 +253,107 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
     });
   }, [filteredTasks, sortBy]);
 
+  // Toggle selection for a specific task id
+  const handleToggleSelect = (taskId: string) => {
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  // Select all or deselect all in current view
+  const handleToggleSelectAll = () => {
+    if (selectedForDelete.size === sortedFinancialList.length) {
+      setSelectedForDelete(new Set());
+    } else {
+      setSelectedForDelete(new Set(sortedFinancialList.map((t) => t.id)));
+    }
+  };
+
+  // Open confirmation for selected or single task
+  const handleRequestDelete = (taskId?: string) => {
+    if (taskId) {
+      setConfirmDeleteModal({ open: true, ids: [taskId], isSingle: true });
+    } else if (selectedForDelete.size > 0) {
+      setConfirmDeleteModal({ open: true, ids: Array.from(selectedForDelete), isSingle: false });
+    }
+  };
+
+  // Perform actual deletion
+  const handleExecuteDelete = () => {
+    const ids = confirmDeleteModal.ids;
+    if (ids.length === 0) return;
+
+    if (ids.length === 1 && onDeleteTask) {
+      onDeleteTask(ids[0]);
+    } else if (onDeleteTasks) {
+      onDeleteTasks(ids);
+    } else if (onDeleteTask) {
+      ids.forEach((id) => onDeleteTask(id));
+    }
+
+    // Clean up selection
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+
+    setConfirmDeleteModal({ open: false, ids: [] });
+
+    // If all selected were deleted, exit delete mode
+    if (ids.length === selectedForDelete.size) {
+      setIsDeleteMode(false);
+    }
+  };
+
+  const isGuest = userRole === 'guest';
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
       <div className="relative w-full max-w-5xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Confirmation Modal */}
+        {confirmDeleteModal.open && (
+          <div className="absolute inset-0 z-60 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-extrabold text-slate-900">
+                  {confirmDeleteModal.isSingle ? 'Удалить эту запись?' : `Удалить выбранные записи (${confirmDeleteModal.ids.length})?`}
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Данное действие безвозвратно удалит {confirmDeleteModal.isSingle ? 'выбранную операцию' : `${confirmDeleteModal.ids.length} операц.`} из аналитики и календаря. Остальные данные останутся нетронутыми.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteModal({ open: false, ids: [] })}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDelete}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white transition-colors shadow-sm"
+                >
+                  Да, удалить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
           <div className="flex items-center gap-3">
@@ -654,27 +768,99 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
 
           {/* Detailed Transactions Breakdown List */}
           <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <Tag className="w-4 h-4 text-slate-700" />
-                Детализация операций ({sortedFinancialList.length})
-              </h3>
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <Tag className="w-4 h-4 text-slate-700" />
+                  Детализация операций ({sortedFinancialList.length})
+                </h3>
 
-              {/* Sorting selector */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
-                <ArrowUpDown className="w-3.5 h-3.5" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="border border-slate-300 rounded-lg px-2 py-1 bg-white text-slate-700 cursor-pointer text-xs"
-                >
-                  <option value="date_desc">Сначала новые</option>
-                  <option value="date_asc">Сначала старые</option>
-                  <option value="amount_desc">По сумме (убывание)</option>
-                  <option value="amount_asc">По сумме (возрастание)</option>
-                </select>
+                {isDeleteMode && (
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 animate-pulse">
+                    Выбрано: {selectedForDelete.size}
+                  </span>
+                )}
+              </div>
+
+              {/* Action buttons & Sorting selector */}
+              <div className="flex items-center gap-2">
+                {!isGuest && sortedFinancialList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDeleteMode(!isDeleteMode);
+                      if (isDeleteMode) {
+                        setSelectedForDelete(new Set());
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs ${
+                      isDeleteMode
+                        ? 'bg-slate-900 text-white hover:bg-slate-800'
+                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isDeleteMode ? 'Выйти из режима' : 'Удалить'}</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="border border-slate-300 rounded-lg px-2 py-1 bg-white text-slate-700 cursor-pointer text-xs"
+                  >
+                    <option value="date_desc">Сначала новые</option>
+                    <option value="date_asc">Сначала старые</option>
+                    <option value="amount_desc">По сумме (убывание)</option>
+                    <option value="amount_asc">По сумме (возрастание)</option>
+                  </select>
+                </div>
               </div>
             </div>
+
+            {/* Batch Action Toolbar when in Delete Mode */}
+            {isDeleteMode && (
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 mb-3 rounded-xl bg-slate-50 border border-slate-200 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAll}
+                    className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs hover:bg-slate-100 transition-colors"
+                  >
+                    {selectedForDelete.size === sortedFinancialList.length && sortedFinancialList.length > 0 ? (
+                      <>
+                        <Square className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Снять все</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare className="w-3.5 h-3.5 text-slate-900" />
+                        <span>Выбрать все</span>
+                      </>
+                    )}
+                  </button>
+                  <span className="text-xs text-slate-500">
+                    Отметьте нужные операции галочками ниже
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={selectedForDelete.size === 0}
+                  onClick={() => handleRequestDelete()}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs ${
+                    selectedForDelete.size > 0
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Удалить выбранные ({selectedForDelete.size})</span>
+                </button>
+              </div>
+            )}
 
             {sortedFinancialList.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400 font-medium">
@@ -685,12 +871,37 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
                 {sortedFinancialList.map((task) => {
                   const inc = task.financials?.income || 0;
                   const exp = task.financials?.expense || 0;
+                  const isSelected = selectedForDelete.has(task.id);
 
                   return (
                     <div
                       key={task.id}
-                      className="py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 px-2 rounded-xl transition-colors"
+                      onClick={() => {
+                        if (isDeleteMode) {
+                          handleToggleSelect(task.id);
+                        }
+                      }}
+                      className={`py-2.5 flex items-center justify-between gap-3 px-2.5 rounded-xl transition-all ${
+                        isDeleteMode ? 'cursor-pointer' : ''
+                      } ${
+                        isSelected
+                          ? 'bg-rose-50/70 border border-rose-200'
+                          : 'hover:bg-slate-50/80 border border-transparent'
+                      }`}
                     >
+                      {/* Left: Checkbox in delete mode */}
+                      {isDeleteMode && (
+                        <div className="shrink-0 pr-1">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(task.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 cursor-pointer"
+                          />
+                        </div>
+                      )}
+
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-bold text-slate-900 truncate">
                           {task.title}
@@ -710,16 +921,33 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        {inc > 0 && (
-                          <div className="text-xs font-black text-emerald-700">
-                            +{formatCurrency(inc)}
-                          </div>
-                        )}
-                        {exp > 0 && (
-                          <div className="text-xs font-black text-rose-700">
-                            -{formatCurrency(exp)}
-                          </div>
+                      <div className="flex items-center gap-3 text-right shrink-0">
+                        <div>
+                          {inc > 0 && (
+                            <div className="text-xs font-black text-emerald-700">
+                              +{formatCurrency(inc)}
+                            </div>
+                          )}
+                          {exp > 0 && (
+                            <div className="text-xs font-black text-rose-700">
+                              -{formatCurrency(exp)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Direct Delete button per item in delete mode */}
+                        {isDeleteMode && !isGuest && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRequestDelete(task.id);
+                            }}
+                            title="Удалить эту запись"
+                            className="p-1.5 rounded-lg text-rose-500 hover:text-white hover:bg-rose-600 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
