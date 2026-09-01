@@ -1,14 +1,22 @@
 'use client';
 
-import React from 'react';
-import { FinancialSummary, TaskItem } from '@/types';
-import { formatRawCurrency } from '@/lib/utils';
+import React, { useState, useMemo } from 'react';
+import { FinancialSummary, TaskItem, ActivityCategory } from '@/types';
+import { formatRawCurrency, formatCurrency } from '@/lib/utils';
 import {
   X,
   TrendingUp,
   TrendingDown,
   PieChart as PieChartIcon,
   BarChart3,
+  Calendar,
+  Filter,
+  ArrowUpDown,
+  Search,
+  CheckCircle2,
+  Tag,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -21,7 +29,23 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
+  CartesianGrid,
 } from 'recharts';
+import {
+  format,
+  parseISO,
+  isWithinInterval,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+  subMonths,
+} from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface AnalyticsModalProps {
   isOpen: boolean;
@@ -30,230 +54,687 @@ interface AnalyticsModalProps {
   tasks: TaskItem[];
 }
 
+type PeriodPreset = 'all' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'custom';
+type OperationFilter = 'all' | 'income' | 'expense';
+
 export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   isOpen,
   onClose,
-  summary,
+  tasks,
 }) => {
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<ActivityCategory | 'all'>('all');
+  const [operationType, setOperationType] = useState<OperationFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [chartType, setChartType] = useState<'bar' | 'pie' | 'timeline'>('bar');
+  const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
+
+  // Filter tasks based on all active filters
+  const filteredTasks = useMemo(() => {
+    const now = new Date();
+
+    return tasks.filter((task) => {
+      // 1. Period filter
+      try {
+        const taskDate = parseISO(task.date);
+
+        if (periodPreset === 'this_week') {
+          const start = startOfWeek(now, { weekStartsOn: 1 });
+          const end = endOfWeek(now, { weekStartsOn: 1 });
+          if (!isWithinInterval(taskDate, { start, end })) return false;
+        } else if (periodPreset === 'this_month') {
+          const start = startOfMonth(now);
+          const end = endOfMonth(now);
+          if (!isWithinInterval(taskDate, { start, end })) return false;
+        } else if (periodPreset === 'last_month') {
+          const prev = subMonths(now, 1);
+          const start = startOfMonth(prev);
+          const end = endOfMonth(prev);
+          if (!isWithinInterval(taskDate, { start, end })) return false;
+        } else if (periodPreset === 'this_year') {
+          const start = startOfYear(now);
+          const end = endOfYear(now);
+          if (!isWithinInterval(taskDate, { start, end })) return false;
+        } else if (periodPreset === 'custom') {
+          if (customStartDate && task.date < customStartDate) return false;
+          if (customEndDate && task.date > customEndDate) return false;
+        }
+      } catch {
+        return false;
+      }
+
+      // 2. Category filter
+      if (selectedCategory !== 'all' && task.category !== selectedCategory) {
+        return false;
+      }
+
+      // 3. Operation filter (Income vs Expense)
+      const inc = task.financials?.income || 0;
+      const exp = task.financials?.expense || 0;
+
+      if (operationType === 'income' && inc <= 0) return false;
+      if (operationType === 'expense' && exp <= 0) return false;
+
+      // 4. Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = task.title.toLowerCase().includes(q);
+        const matchNote = (task.financials?.note || '').toLowerCase().includes(q);
+        const matchDesc = (task.description || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchNote && !matchDesc) return false;
+      }
+
+      return true;
+    });
+  }, [tasks, periodPreset, customStartDate, customEndDate, selectedCategory, operationType, searchQuery]);
+
+  // Financial summary for filtered tasks
+  const stats = useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    const byCategory: Record<string, { income: number; expense: number; count: number }> = {
+      study: { income: 0, expense: 0, count: 0 },
+      work: { income: 0, expense: 0, count: 0 },
+      other: { income: 0, expense: 0, count: 0 },
+    };
+
+    filteredTasks.forEach((t) => {
+      const inc = t.financials?.income || 0;
+      const exp = t.financials?.expense || 0;
+      const cat = t.category || 'other';
+
+      income += inc;
+      expense += exp;
+
+      if (!byCategory[cat]) {
+        byCategory[cat] = { income: 0, expense: 0, count: 0 };
+      }
+      byCategory[cat].income += inc;
+      byCategory[cat].expense += exp;
+      byCategory[cat].count += 1;
+    });
+
+    return {
+      totalIncome: income,
+      totalExpense: expense,
+      netBalance: income - expense,
+      byCategory,
+      totalTasks: filteredTasks.length,
+    };
+  }, [filteredTasks]);
+
+  // Bar chart category data
+  const categoryChartData = useMemo(() => {
+    const cats = [
+      { id: 'study', name: 'Учеба' },
+      { id: 'work', name: 'Работа' },
+      { id: 'other', name: 'Иное' },
+    ];
+
+    return cats.map((c) => ({
+      name: c.name,
+      Доход: stats.byCategory[c.id]?.income || 0,
+      Расход: stats.byCategory[c.id]?.expense || 0,
+      Баланс: (stats.byCategory[c.id]?.income || 0) - (stats.byCategory[c.id]?.expense || 0),
+    }));
+  }, [stats]);
+
+  // Pie chart data
+  const expensePieData = useMemo(() => {
+    return [
+      { name: 'Учеба', value: stats.byCategory.study?.expense || 0, color: '#0ea5e9' },
+      { name: 'Работа', value: stats.byCategory.work?.expense || 0, color: '#10b981' },
+      { name: 'Иное', value: stats.byCategory.other?.expense || 0, color: '#8b5cf6' },
+    ].filter((d) => d.value > 0);
+  }, [stats]);
+
+  const incomePieData = useMemo(() => {
+    return [
+      { name: 'Учеба', value: stats.byCategory.study?.income || 0, color: '#0ea5e9' },
+      { name: 'Работа', value: stats.byCategory.work?.income || 0, color: '#10b981' },
+      { name: 'Иное', value: stats.byCategory.other?.income || 0, color: '#8b5cf6' },
+    ].filter((d) => d.value > 0);
+  }, [stats]);
+
+  // Timeline chronology data for trend line
+  const timelineChartData = useMemo(() => {
+    const map = new Map<string, { date: string; income: number; expense: number; net: number }>();
+
+    filteredTasks.forEach((t) => {
+      const d = t.date;
+      const current = map.get(d) || { date: d, income: 0, expense: 0, net: 0 };
+      current.income += t.financials?.income || 0;
+      current.expense += t.financials?.expense || 0;
+      current.net = current.income - current.expense;
+      map.set(d, current);
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((item) => ({
+        ...item,
+        dateLabel: format(parseISO(item.date), 'd MMM', { locale: ru }),
+      }));
+  }, [filteredTasks]);
+
+  // Sorted list of financial transactions for detailed table
+  const sortedFinancialList = useMemo(() => {
+    const list = filteredTasks.filter(
+      (t) => (t.financials?.income || 0) > 0 || (t.financials?.expense || 0) > 0
+    );
+
+    return list.sort((a, b) => {
+      if (sortBy === 'date_desc') return b.date.localeCompare(a.date);
+      if (sortBy === 'date_asc') return a.date.localeCompare(b.date);
+      const aAmt = Math.max(a.financials?.income || 0, a.financials?.expense || 0);
+      const bAmt = Math.max(b.financials?.income || 0, b.financials?.expense || 0);
+      if (sortBy === 'amount_desc') return bAmt - aAmt;
+      return aAmt - bAmt;
+    });
+  }, [filteredTasks, sortBy]);
+
   if (!isOpen) return null;
 
-  // Prepare data for category comparison chart
-  const categoryData = [
-    {
-      name: 'Учеба',
-      Доход: summary.incomeByCategory.study || 0,
-      Расход: summary.expenseByCategory.study || 0,
-    },
-    {
-      name: 'Работа',
-      Доход: summary.incomeByCategory.work || 0,
-      Расход: summary.expenseByCategory.work || 0,
-    },
-    {
-      name: 'Иное',
-      Доход: summary.incomeByCategory.other || 0,
-      Расход: summary.expenseByCategory.other || 0,
-    },
-  ];
-
-  // Pie chart data for expense distribution
-  const expensePieData = [
-    { name: 'Учеба', value: summary.expenseByCategory.study || 0, color: '#0ea5e9' },
-    { name: 'Работа', value: summary.expenseByCategory.work || 0, color: '#10b981' },
-    { name: 'Иное', value: summary.expenseByCategory.other || 0, color: '#8b5cf6' },
-  ].filter((d) => d.value > 0);
-
-  // Pie chart data for income distribution
-  const incomePieData = [
-    { name: 'Учеба', value: summary.incomeByCategory.study || 0, color: '#0ea5e9' },
-    { name: 'Работа', value: summary.incomeByCategory.work || 0, color: '#10b981' },
-    { name: 'Иное', value: summary.incomeByCategory.other || 0, color: '#8b5cf6' },
-  ].filter((d) => d.value > 0);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in">
-      <div className="relative w-full max-w-4xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-              <BarChart3 className="w-4 h-4" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+      <div className="relative w-full max-w-5xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
+              <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Финансовая Аналитика ADT</h2>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
+                Финансовая Аналитика ADT
+              </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Детальный баланс доходов и расходов по типам занятости
+                Глубокий анализ доходов, расходов, категорий и динамики за любой период
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-900 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+            className="text-slate-400 hover:text-slate-900 p-2 rounded-xl hover:bg-slate-200/60 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
-          {/* Top Summary Big Numbers */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 shadow-xs">
-              <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
-                <TrendingUp className="w-4 h-4" /> Общий доход
-              </div>
-              <div className="text-2xl font-extrabold text-emerald-700 mt-1">
-                +{formatRawCurrency(summary.totalIncome)}
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50/60 shadow-xs">
-              <div className="text-xs font-bold text-rose-700 flex items-center gap-1.5">
-                <TrendingDown className="w-4 h-4" /> Общий расход
-              </div>
-              <div className="text-2xl font-extrabold text-rose-700 mt-1">
-                -{formatRawCurrency(summary.totalExpense)}
-              </div>
-            </div>
-
-            <div className={`p-4 rounded-2xl border shadow-xs ${
-              summary.netBalance >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'
-            }`}>
-              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <PieChartIcon className="w-4 h-4" /> Чистый результат
-              </div>
-              <div
-                className={`text-2xl font-extrabold mt-1 ${
-                  summary.netBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'
+        {/* Filter Controls Bar */}
+        <div className="p-4 bg-slate-50 border-b border-slate-200 space-y-3">
+          {/* Top Row: Period Presets & Search */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            {/* Period Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none text-xs font-bold">
+              <button
+                onClick={() => setPeriodPreset('all')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  periodPreset === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                {summary.netBalance >= 0 ? '+' : ''}{formatRawCurrency(summary.netBalance)}
-              </div>
+                Все время
+              </button>
+              <button
+                onClick={() => setPeriodPreset('this_week')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  periodPreset === 'this_week'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Эта неделя
+              </button>
+              <button
+                onClick={() => setPeriodPreset('this_month')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  periodPreset === 'this_month'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Этот месяц
+              </button>
+              <button
+                onClick={() => setPeriodPreset('last_month')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  periodPreset === 'last_month'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Прошлый месяц
+              </button>
+              <button
+                onClick={() => setPeriodPreset('this_year')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  periodPreset === 'this_year'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Весь год
+              </button>
+              <button
+                onClick={() => setPeriodPreset('custom')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  periodPreset === 'custom'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Свой период
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск по статьям..."
+                className="w-full bg-white border border-slate-300 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 shadow-xs"
+              />
             </div>
           </div>
 
-          {/* Bar Chart: Income vs Expense by Category */}
-          <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-4 flex items-center gap-2">
-              <BarChart3 className="w-3.5 h-3.5 text-slate-900" />
-              Доходы и Расходы по типам занятости
-            </h3>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={categoryData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
-                  <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => `${v / 1000}k`} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e2e8f0',
-                      borderRadius: '12px',
-                      color: '#0f172a',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                      fontWeight: 600,
-                    }}
-                    formatter={(value: any) => formatRawCurrency(Number(value))}
-                  />
-                  <Legend />
-                  <Bar dataKey="Доход" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Расход" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Custom Date Range if active */}
+          {periodPreset === 'custom' && (
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 bg-white p-2.5 rounded-2xl border border-slate-200">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <span>С:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="border border-slate-300 rounded-lg px-2 py-1 text-xs"
+              />
+              <span>По:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="border border-slate-300 rounded-lg px-2 py-1 text-xs"
+              />
             </div>
-          </div>
+          )}
 
-          {/* Pie Charts Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Income Distribution */}
-            <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-2">
-                Структура Доходов
-              </h3>
-              {incomePieData.length > 0 ? (
-                <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={incomePieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {incomePieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#ffffff',
-                          borderColor: '#e2e8f0',
-                          borderRadius: '12px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                          fontWeight: 600,
-                        }}
-                        formatter={(value: any) => formatRawCurrency(Number(value))}
-                      />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-48 flex items-center justify-center text-xs text-slate-400 font-medium">
-                  Нет данных по доходам
-                </div>
-              )}
+          {/* Second Row: Category & Operation Type filters */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
+              {/* Category selector */}
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value as any)}
+                className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 shadow-xs cursor-pointer"
+              >
+                <option value="all">Все категории</option>
+                <option value="study">Учеба</option>
+                <option value="work">Работа</option>
+                <option value="other">Иное</option>
+              </select>
+
+              {/* Operation type selector */}
+              <select
+                value={operationType}
+                onChange={(e) => setOperationType(e.target.value as any)}
+                className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 shadow-xs cursor-pointer"
+              >
+                <option value="all">Все операции (Доходы + Расходы)</option>
+                <option value="income">Только доходы (+)</option>
+                <option value="expense">Только расходы (-)</option>
+              </select>
             </div>
 
-            {/* Expense Distribution */}
-            <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-rose-700 mb-2">
-                Структура Расходов
-              </h3>
-              {expensePieData.length > 0 ? (
-                <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={expensePieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {expensePieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#ffffff',
-                          borderColor: '#e2e8f0',
-                          borderRadius: '12px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                          fontWeight: 600,
-                        }}
-                        formatter={(value: any) => formatRawCurrency(Number(value))}
-                      />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-48 flex items-center justify-center text-xs text-slate-400 font-medium">
-                  Нет данных по расходам
-                </div>
-              )}
+            {/* Chart Type Toggle */}
+            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setChartType('bar')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  chartType === 'bar' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Столбцы
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('timeline')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  chartType === 'timeline' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Динамика
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('pie')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  chartType === 'pie' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Круговая
+              </button>
             </div>
           </div>
         </div>
 
+        {/* Modal Body Content */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+          {/* Summary Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4.5 rounded-2xl border border-emerald-200 bg-emerald-50/60 shadow-xs">
+              <div className="text-xs font-bold text-emerald-700 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-emerald-600" /> Доходы за выборку
+                </span>
+                <span className="text-[10px] bg-white px-2 py-0.5 rounded-full border border-emerald-200 font-extrabold text-emerald-800">
+                  +{filteredTasks.filter((t) => (t.financials?.income || 0) > 0).length} опер.
+                </span>
+              </div>
+              <div className="text-2xl font-black text-emerald-700 mt-1.5 tracking-tight">
+                +{formatRawCurrency(stats.totalIncome)}
+              </div>
+              <div className="text-[11px] text-emerald-800/70 mt-1 font-medium">
+                Учеба: {formatRawCurrency(stats.byCategory.study?.income || 0)} • Работа: {formatRawCurrency(stats.byCategory.work?.income || 0)}
+              </div>
+            </div>
+
+            <div className="p-4.5 rounded-2xl border border-rose-200 bg-rose-50/60 shadow-xs">
+              <div className="text-xs font-bold text-rose-700 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <TrendingDown className="w-4 h-4 text-rose-600" /> Расходы за выборку
+                </span>
+                <span className="text-[10px] bg-white px-2 py-0.5 rounded-full border border-rose-200 font-extrabold text-rose-800">
+                  -{filteredTasks.filter((t) => (t.financials?.expense || 0) > 0).length} опер.
+                </span>
+              </div>
+              <div className="text-2xl font-black text-rose-700 mt-1.5 tracking-tight">
+                -{formatRawCurrency(stats.totalExpense)}
+              </div>
+              <div className="text-[11px] text-rose-800/70 mt-1 font-medium">
+                Иное: {formatRawCurrency(stats.byCategory.other?.expense || 0)} • Учеба: {formatRawCurrency(stats.byCategory.study?.expense || 0)}
+              </div>
+            </div>
+
+            <div
+              className={`p-4.5 rounded-2xl border shadow-xs ${
+                stats.netBalance >= 0
+                  ? 'border-emerald-200 bg-emerald-50/60'
+                  : 'border-rose-200 bg-rose-50/60'
+              }`}
+            >
+              <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <PieChartIcon className="w-4 h-4" /> Чистый результат
+                </span>
+                <span className="text-[10px] bg-white px-2 py-0.5 rounded-full border border-slate-200 font-extrabold text-slate-700">
+                  {stats.netBalance >= 0 ? 'Прибыль' : 'Дефицит'}
+                </span>
+              </div>
+              <div
+                className={`text-2xl font-black mt-1.5 tracking-tight ${
+                  stats.netBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                }`}
+              >
+                {stats.netBalance >= 0 ? '+' : ''}{formatRawCurrency(stats.netBalance)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                Всего затронуто событий: {stats.totalTasks}
+              </div>
+            </div>
+          </div>
+
+          {/* Visualization Section */}
+          <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
+            {/* Chart 1: Bar Category Chart */}
+            {chartType === 'bar' && (
+              <div>
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 mb-4 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-slate-900" />
+                  Сравнение доходов и расходов по категориям
+                </h3>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryChartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
+                      <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => `${v / 1000}k`} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#ffffff',
+                          borderColor: '#e2e8f0',
+                          borderRadius: '12px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                          fontWeight: 600,
+                        }}
+                        formatter={(value: any) => formatRawCurrency(Number(value))}
+                      />
+                      <Legend />
+                      <Bar dataKey="Доход" fill="#10b981" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="Расход" fill="#ef4444" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Chart 2: Timeline Dynamics Line Chart */}
+            {chartType === 'timeline' && (
+              <div>
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 mb-4 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-900" />
+                  Хронологическая динамика движения средств
+                </h3>
+                {timelineChartData.length > 0 ? (
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={timelineChartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="dateLabel" stroke="#64748b" fontSize={12} />
+                        <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => `${v / 1000}k`} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#ffffff',
+                            borderColor: '#e2e8f0',
+                            borderRadius: '12px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                            fontWeight: 600,
+                          }}
+                          formatter={(value: any) => formatRawCurrency(Number(value))}
+                        />
+                        <Legend />
+                        <Line type="monotone" dataKey="income" name="Доход" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="expense" name="Расход" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="net" name="Чистое сальдо" stroke="#0f172a" strokeWidth={2} strokeDasharray="4 4" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-64 flex items-center justify-center text-xs text-slate-400">
+                    Нет данных за выбранный период
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Chart 3: Pie Distribution */}
+            {chartType === 'pie' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Income Pie */}
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-2">
+                    Структура Доходов
+                  </h4>
+                  {incomePieData.length > 0 ? (
+                    <div className="h-52">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={incomePieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={45}
+                            outerRadius={75}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {incomePieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#ffffff',
+                              borderColor: '#e2e8f0',
+                              borderRadius: '12px',
+                            }}
+                            formatter={(value: any) => formatRawCurrency(Number(value))}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-52 flex items-center justify-center text-xs text-slate-400">
+                      Нет данных по доходам
+                    </div>
+                  )}
+                </div>
+
+                {/* Expense Pie */}
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 mb-2">
+                    Структура Расходов
+                  </h4>
+                  {expensePieData.length > 0 ? (
+                    <div className="h-52">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={expensePieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={45}
+                            outerRadius={75}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {expensePieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#ffffff',
+                              borderColor: '#e2e8f0',
+                              borderRadius: '12px',
+                            }}
+                            formatter={(value: any) => formatRawCurrency(Number(value))}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-52 flex items-center justify-center text-xs text-slate-400">
+                      Нет данных по расходам
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Detailed Transactions Breakdown List */}
+          <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Tag className="w-4 h-4 text-slate-700" />
+                Детализация операций ({sortedFinancialList.length})
+              </h3>
+
+              {/* Sorting selector */}
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
+                <ArrowUpDown className="w-3.5 h-3.5" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="border border-slate-300 rounded-lg px-2 py-1 bg-white text-slate-700 cursor-pointer text-xs"
+                >
+                  <option value="date_desc">Сначала новые</option>
+                  <option value="date_asc">Сначала старые</option>
+                  <option value="amount_desc">По сумме (убывание)</option>
+                  <option value="amount_asc">По сумме (возрастание)</option>
+                </select>
+              </div>
+            </div>
+
+            {sortedFinancialList.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 font-medium">
+                Финансовых записей по заданным фильтрам не найдено
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto pr-1">
+                {sortedFinancialList.map((task) => {
+                  const inc = task.financials?.income || 0;
+                  const exp = task.financials?.expense || 0;
+
+                  return (
+                    <div
+                      key={task.id}
+                      className="py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 px-2 rounded-xl transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-slate-900 truncate">
+                          {task.title}
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                          <span>{format(parseISO(task.date), 'd MMMM yyyy', { locale: ru })}</span>
+                          <span>•</span>
+                          <span className="capitalize font-semibold text-slate-700">
+                            {task.category === 'study' ? 'Учеба' : task.category === 'work' ? 'Работа' : 'Иное'}
+                          </span>
+                          {task.financials?.note && (
+                            <>
+                              <span>•</span>
+                              <span className="italic text-slate-400 truncate">{task.financials.note}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        {inc > 0 && (
+                          <div className="text-xs font-black text-emerald-700">
+                            +{formatCurrency(inc)}
+                          </div>
+                        )}
+                        {exp > 0 && (
+                          <div className="text-xs font-black text-rose-700">
+                            -{formatCurrency(exp)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Modal Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end">
+        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+          <div className="text-xs font-semibold text-slate-500">
+            Найдено записей: <strong className="text-slate-800">{filteredTasks.length}</strong>
+          </div>
           <button
             onClick={onClose}
             className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition-colors shadow-xs"

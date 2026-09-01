@@ -4,7 +4,7 @@ import React from 'react';
 import { TaskItem, UserRole } from '@/types';
 import { formatCurrency, getCategoryConfig, getWeekDays, formatDateRu } from '@/lib/utils';
 import { format, isSameDay } from 'date-fns';
-import { Plus, CheckCircle2, Circle } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Clock } from 'lucide-react';
 
 interface WeekViewProps {
   currentDate: Date;
@@ -32,7 +32,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-xs overflow-x-auto">
       {/* 7 Days Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-7 gap-3 min-w-[700px]">
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-3 min-w-[750px]">
         {weekDays.map((day) => {
           const dateStr = format(day, 'yyyy-MM-dd');
           const isToday = isSameDay(day, today);
@@ -44,9 +44,10 @@ export const WeekView: React.FC<WeekViewProps> = ({
               return (a.startTime || '00:00').localeCompare(b.startTime || '00:00');
             });
 
-          // Daily financial totals
+          // Daily financial totals & net balance for the day
           const dayIncome = dayTasks.reduce((acc, t) => acc + (t.financials?.income || 0), 0);
           const dayExpense = dayTasks.reduce((acc, t) => acc + (t.financials?.expense || 0), 0);
+          const dayNet = dayIncome - dayExpense;
 
           return (
             <div
@@ -75,15 +76,32 @@ export const WeekView: React.FC<WeekViewProps> = ({
                   </span>
                 </div>
 
-                {/* Day Financial summary badges (Hidden for guest) */}
+                {/* Day Financial summary badges & Total Net Outcome (Hidden for guest) */}
                 {!isGuest && (dayIncome > 0 || dayExpense > 0) && (
-                  <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold">
-                    {dayIncome > 0 && (
-                      <span className="text-emerald-600">+{formatCurrency(dayIncome)}</span>
-                    )}
-                    {dayExpense > 0 && (
-                      <span className="text-rose-600">-{formatCurrency(dayExpense)}</span>
-                    )}
+                  <div className="mt-2 space-y-1">
+                    {/* Income & Expense lines */}
+                    <div className="flex items-center justify-between text-[10px] font-bold">
+                      {dayIncome > 0 ? (
+                        <span className="text-emerald-600">+{formatCurrency(dayIncome)}</span>
+                      ) : (
+                        <span />
+                      )}
+                      {dayExpense > 0 && (
+                        <span className="text-rose-600">-{formatCurrency(dayExpense)}</span>
+                      )}
+                    </div>
+
+                    {/* Day Net Total Outcome */}
+                    <div
+                      className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md flex items-center justify-between border ${
+                        dayNet >= 0
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                      }`}
+                    >
+                      <span>Итог:</span>
+                      <span>{dayNet >= 0 ? '+' : ''}{formatCurrency(dayNet)}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -108,6 +126,15 @@ export const WeekView: React.FC<WeekViewProps> = ({
                     const hasIncome = (task.financials?.income || 0) > 0;
                     const hasExpense = (task.financials?.expense || 0) > 0;
 
+                    // Display time range: start - end
+                    const timeDisplay = task.isAllDay
+                      ? 'Весь день'
+                      : task.startTime && task.endTime
+                      ? `${task.startTime} – ${task.endTime}`
+                      : task.startTime
+                      ? `${task.startTime}`
+                      : 'Без времени';
+
                     return (
                       <div
                         key={task.id}
@@ -116,19 +143,20 @@ export const WeekView: React.FC<WeekViewProps> = ({
                         style={{ borderLeftColor: cat.color, borderLeftWidth: '3px' }}
                       >
                         <div className="flex items-start justify-between gap-1.5">
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="text-xs font-bold text-slate-900 truncate">
                               {task.title}
                             </div>
-                            <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                              {task.isAllDay ? 'Весь день' : `${task.startTime || ''}`}
+                            <div className="text-[10px] text-slate-500 font-semibold flex items-center gap-1 mt-1">
+                              <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate">{timeDisplay}</span>
                             </div>
                           </div>
 
                           <button
                             onClick={(e) => onToggleStatus(task, e)}
                             disabled={isGuest}
-                            className="text-slate-400 hover:text-emerald-600 transition-colors shrink-0"
+                            className="text-slate-400 hover:text-emerald-600 transition-colors shrink-0 mt-0.5"
                           >
                             {task.status === 'completed' ? (
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -140,7 +168,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
 
                         {/* Fin tag (Hidden for guest) */}
                         {!isGuest && (hasIncome || hasExpense) && (
-                          <div className="flex items-center gap-1 text-[10px] font-bold mt-1.5 pt-1 border-t border-slate-100">
+                          <div className="flex items-center justify-between gap-1 text-[10px] font-bold mt-1.5 pt-1 border-t border-slate-100">
                             {hasIncome && (
                               <span className="text-emerald-600">
                                 +{formatCurrency(task.financials.income)}
