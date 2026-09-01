@@ -102,22 +102,32 @@ export default function DashboardPage() {
         if (res.ok) {
           const cloud = await res.json();
           if (cloud.success) {
-            // If cloud has data, sync it
+            // Task synchronization:
+            // If cloud has tasks, use cloud tasks.
+            // If cloud is empty but local has tasks, restore cloud with local tasks!
             if (Array.isArray(cloud.tasks) && cloud.tasks.length > 0) {
               setTasks(cloud.tasks);
               saveTasksToStorage(cloud.tasks);
             } else if (localTasks.length > 0) {
-              // Push local tasks to cloud if cloud is empty
               fetch('/api/data/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tasks: localTasks, baseBalance: localBase }),
+                body: JSON.stringify({ tasks: localTasks }),
               }).catch(() => {});
             }
 
-            if (typeof cloud.baseBalance === 'number') {
+            // Balance synchronization:
+            // If cloud has a balance > 0, sync to local.
+            // If cloud has 0 but local has a balance, push local balance to cloud instead of resetting to 0!
+            if (typeof cloud.baseBalance === 'number' && cloud.baseBalance > 0) {
               setBaseBalance(cloud.baseBalance);
               saveBaseBalanceToStorage(cloud.baseBalance);
+            } else if (localBase > 0) {
+              fetch('/api/data/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ baseBalance: localBase }),
+              }).catch(() => {});
             }
           }
         }
