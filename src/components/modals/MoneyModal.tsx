@@ -186,7 +186,7 @@ export const MoneyModal: React.FC<MoneyModalProps> = ({
                 value={baseAmount}
                 onChange={(e) => setBaseAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="0"
-                step="1000"
+                step="any"
                 className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 text-base font-extrabold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 shadow-xs"
                 autoFocus
               />
@@ -243,8 +243,7 @@ export const MoneyModal: React.FC<MoneyModalProps> = ({
                 value={txAmount}
                 onChange={(e) => setTxAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="Например: 5000"
-                min="1"
-                step="100"
+                step="any"
                 required
                 className={`w-full bg-white border rounded-2xl px-4 py-2.5 text-sm font-extrabold focus:outline-none focus:ring-2 shadow-xs ${
                   txType === 'income'

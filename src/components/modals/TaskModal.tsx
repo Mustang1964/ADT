@@ -339,8 +339,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     value={income}
                     onChange={(e) => setIncome(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="0"
-                    min="0"
-                    step="100"
+                    step="any"
                     className="w-full bg-white border border-emerald-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600 rounded-xl px-3 py-2 text-xs font-bold text-emerald-700 placeholder-slate-400 focus:outline-none disabled:bg-slate-50 shadow-xs"
                   />
                 </div>
@@ -356,8 +355,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     value={expense}
                     onChange={(e) => setExpense(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="0"
-                    min="0"
-                    step="100"
+                    step="any"
                     className="w-full bg-white border border-rose-300 focus:border-rose-600 focus:ring-2 focus:ring-rose-600 rounded-xl px-3 py-2 text-xs font-bold text-rose-700 placeholder-slate-400 focus:outline-none disabled:bg-slate-50 shadow-xs"
                   />
                 </div>
