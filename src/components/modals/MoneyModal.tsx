@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TaskItem, ActivityCategory } from '@/types';
+import { TaskItem, ActivityCategory, ExpenseCategory } from '@/types';
 import { formatRawCurrency } from '@/lib/utils';
+import { EXPENSE_CATEGORIES, getExpenseCategoryLabel } from '@/lib/constants';
 import {
   X,
   Wallet,
@@ -13,6 +14,7 @@ import {
   Plus,
   ArrowRight,
   Sparkles,
+  Receipt,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -27,6 +29,7 @@ interface MoneyModalProps {
     amount: number;
     type: 'income' | 'expense';
     category: ActivityCategory;
+    expenseCategory?: ExpenseCategory;
     date: string;
   }) => void;
 }
@@ -47,6 +50,7 @@ export const MoneyModal: React.FC<MoneyModalProps> = ({
   const [txAmount, setTxAmount] = useState<number | ''>('');
   const [txTitle, setTxTitle] = useState('');
   const [txCategory, setTxCategory] = useState<ActivityCategory>('work');
+  const [txExpenseCategory, setTxExpenseCategory] = useState<ExpenseCategory>('food');
   const [txDate, setTxDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -86,12 +90,14 @@ export const MoneyModal: React.FC<MoneyModalProps> = ({
       amount: amt,
       type: txType,
       category: txCategory,
+      expenseCategory: txType === 'expense' ? txExpenseCategory : undefined,
       date: txDate,
     });
 
     setSuccessMsg(`Операция на ${formatRawCurrency(amt)} успешно добавлена!`);
     setTxAmount('');
     setTxTitle('');
+    setTxExpenseCategory('food');
     setTimeout(() => {
       setSuccessMsg(null);
       onClose();
@@ -266,7 +272,7 @@ export const MoneyModal: React.FC<MoneyModalProps> = ({
             <div className="grid grid-cols-2 gap-2.5">
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Категория
+                  Тип активности
                 </label>
                 <select
                   value={txCategory}
@@ -291,6 +297,27 @@ export const MoneyModal: React.FC<MoneyModalProps> = ({
                 />
               </div>
             </div>
+
+            {/* Expense Category Selection when txType is expense */}
+            {txType === 'expense' && (
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1">
+                  <Receipt className="w-3.5 h-3.5 text-rose-600" />
+                  Категория расхода
+                </label>
+                <select
+                  value={txExpenseCategory}
+                  onChange={(e) => setTxExpenseCategory(e.target.value as ExpenseCategory)}
+                  className="w-full bg-white border border-rose-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-600 shadow-xs cursor-pointer"
+                >
+                  {EXPENSE_CATEGORIES.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.emoji ? `${cat.emoji} ` : ''}{cat.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <button
               type="submit"

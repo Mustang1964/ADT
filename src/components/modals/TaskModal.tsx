@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TaskItem, ActivityCategory, TaskStatus, UserRole } from '@/types';
-import { DEFAULT_CATEGORIES } from '@/lib/constants';
+import { TaskItem, ActivityCategory, TaskStatus, UserRole, ExpenseCategory } from '@/types';
+import { DEFAULT_CATEGORIES, EXPENSE_CATEGORIES, getExpenseCategoryLabel } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
 import {
   X,
@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Lock,
   Tag,
+  Receipt,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -55,7 +56,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [isAllDay, setIsAllDay] = useState(false);
   const [income, setIncome] = useState<number | ''>('');
   const [expense, setExpense] = useState<number | ''>('');
-  const [financeNote, setFinanceNote] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('food');
   const [status, setStatus] = useState<TaskStatus>('planned');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +74,20 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setIsAllDay(Boolean(task.isAllDay));
       setIncome(task.financials?.income ?? '');
       setExpense(task.financials?.expense ?? '');
-      setFinanceNote(task.financials?.note || '');
+      
+      // Determine expense category: from task.financials.expenseCategory or fallback from note
+      const catId = task.financials?.expenseCategory;
+      if (catId) {
+        setExpenseCategory(catId);
+      } else if (task.financials?.note) {
+        const found = EXPENSE_CATEGORIES.find(
+          (c) => c.id === task.financials?.note || c.label.toLowerCase() === task.financials?.note?.toLowerCase()
+        );
+        setExpenseCategory(found ? found.id : 'other');
+      } else {
+        setExpenseCategory('food');
+      }
+
       setStatus(task.status || 'planned');
       setPriority(task.priority || 'medium');
     } else {
@@ -93,7 +107,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setIsAllDay(false);
       setIncome('');
       setExpense('');
-      setFinanceNote('');
+      setExpenseCategory('food');
       setStatus('planned');
       setPriority('medium');
     }
@@ -111,6 +125,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       return;
     }
 
+    const expValue = Number(expense) || 0;
+    const incValue = Number(income) || 0;
+    const catLabel = getExpenseCategoryLabel(expenseCategory);
+
     onSave({
       ...(task ? { id: task.id } : {}),
       title: title.trim(),
@@ -122,10 +140,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       endTime: isAllDay ? undefined : endTime,
       isAllDay,
       financials: {
-        income: Number(income) || 0,
-        expense: Number(expense) || 0,
+        income: incValue,
+        expense: expValue,
         currency: 'RUB',
-        note: financeNote.trim() || undefined,
+        expenseCategory: expValue > 0 ? expenseCategory : undefined,
+        note: expValue > 0 ? catLabel : undefined,
       },
       status,
       priority,
@@ -344,16 +363,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 </div>
               </div>
 
-              {/* Finance note */}
-              <div>
-                <input
-                  type="text"
+              {/* Expense Category Dropdown (instead of freeform note) */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                  <Receipt className="w-3 h-3 text-slate-500" />
+                  Категория расхода
+                </label>
+                <select
                   disabled={isGuest}
-                  value={financeNote}
-                  onChange={(e) => setFinanceNote(e.target.value)}
-                  placeholder="Заметка к финансам (например: аванс, учебники, оплата такси...)"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:bg-slate-50 shadow-xs"
-                />
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent disabled:bg-slate-50 shadow-xs cursor-pointer"
+                >
+                  {EXPENSE_CATEGORIES.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.emoji ? `${cat.emoji} ` : ''}{cat.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400">
+                  Укажите категорию трат для точного учета в финансовой аналитике
+                </p>
               </div>
             </div>
           )}

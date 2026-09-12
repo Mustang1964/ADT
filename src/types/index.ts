@@ -1,10 +1,25 @@
 export type ActivityCategory = 'study' | 'work' | 'other' | string;
 
+export type ExpenseCategory =
+  | 'food'           // Питание
+  | 'transport'      // Транспорт
+  | 'scooter'        // Самокат
+  | 'entertainment'  // Развлечения
+  | 'telecom_vpn'    // Связь и VPN
+  | 'clothing'       // Одежда
+  | 'wb_other'       // WB и прочее
+  | 'impulse'        // Импульс
+  | 'mistake'        // Ошибка
+  | 'charity'        // Благотворительность
+  | 'other'          // Прочее
+  | string;
+
 export interface TaskFinancials {
-  income: number;    // Доход
-  expense: number;   // Расход
-  currency?: string; // Валюта (RUB по умолчанию, можно USD/EUR)
-  note?: string;     // Заметка по финансам
+  income: number;            // Доход
+  expense: number;           // Расход
+  currency?: string;         // Валюта (RUB по умолчанию, можно USD/EUR)
+  expenseCategory?: ExpenseCategory; // Категория расхода
+  note?: string;             // Заметка по финансам (или название категории)
 }
 
 export type TaskStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';

@@ -1,5 +1,6 @@
 import { TaskItem } from '@/types';
 import { format } from 'date-fns';
+import { getExpenseCategoryLabel } from './constants';
 
 const STORAGE_KEY = 'adt_tasks_data_v2';
 const BASE_BALANCE_KEY = 'adt_base_balance_v1';
@@ -81,11 +82,14 @@ export function exportTasksAsJson(tasks: TaskItem[]): void {
  * Export tasks as CSV with Russian headers
  */
 export function exportTasksAsCsv(tasks: TaskItem[]): void {
-  const headers = ['ID', 'Название', 'Категория', 'Дата', 'Время начала', 'Время окончания', 'Доход (руб)', 'Расход (руб)', 'Статус', 'Описание'];
+  const headers = ['ID', 'Название', 'Категория', 'Категория расхода', 'Дата', 'Время начала', 'Время окончания', 'Доход (руб)', 'Расход (руб)', 'Статус', 'Описание'];
   const rows = tasks.map((t) => [
     t.id,
     `"${(t.title || '').replace(/"/g, '""')}"`,
     t.category === 'study' ? 'Учеба' : t.category === 'work' ? 'Работа' : 'Иное',
+    (t.financials?.expense || 0) > 0
+      ? `"${getExpenseCategoryLabel(t.financials.expenseCategory || t.financials.note)}"`
+      : '',
     t.date,
     t.startTime || '',
     t.endTime || '',

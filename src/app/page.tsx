@@ -171,6 +171,7 @@ export default function DashboardPage() {
     amount: number;
     type: 'income' | 'expense';
     category: ActivityCategory;
+    expenseCategory?: string;
     date: string;
   }) => {
     const nowIso = new Date().toISOString();
@@ -185,6 +186,8 @@ export default function DashboardPage() {
         income: tx.type === 'income' ? tx.amount : 0,
         expense: tx.type === 'expense' ? tx.amount : 0,
         currency: 'RUB',
+        expenseCategory: tx.type === 'expense' ? tx.expenseCategory : undefined,
+        note: tx.type === 'expense' && tx.expenseCategory ? tx.title : undefined,
       },
       status: 'completed',
       priority: 'medium',

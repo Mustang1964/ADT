@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { FinancialSummary, TaskItem, ActivityCategory, UserRole } from '@/types';
+import { FinancialSummary, TaskItem, ActivityCategory, UserRole, ExpenseCategory } from '@/types';
+import { EXPENSE_CATEGORIES, getExpenseCategoryLabel } from '@/lib/constants';
 import { formatRawCurrency, formatCurrency } from '@/lib/utils';
 import {
   X,
@@ -21,6 +22,7 @@ import {
   CheckSquare,
   Square,
   AlertTriangle,
+  Receipt,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -76,6 +78,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ActivityCategory | 'all'>('all');
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('all');
   const [operationType, setOperationType] = useState<OperationFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'timeline'>('bar');
@@ -123,30 +126,52 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
         return false;
       }
 
-      // 2. Category filter
+      // 2. Activity Category filter
       if (selectedCategory !== 'all' && task.category !== selectedCategory) {
         return false;
       }
 
-      // 3. Operation filter (Income vs Expense)
+      // 3. Expense Category filter (if selected, task must be an expense matching this category)
+      if (selectedExpenseCategory !== 'all') {
+        const exp = task.financials?.expense || 0;
+        if (exp <= 0) return false;
+
+        const taskExpCat = task.financials?.expenseCategory;
+        const taskNote = (task.financials?.note || '').toLowerCase();
+
+        // Check against id or label
+        const targetOption = EXPENSE_CATEGORIES.find((c) => c.id === selectedExpenseCategory);
+        const matchCatId = taskExpCat === selectedExpenseCategory;
+        const matchNoteLabel = targetOption ? taskNote === targetOption.label.toLowerCase() : false;
+        const matchNoteId = taskNote === selectedExpenseCategory.toLowerCase();
+
+        if (!matchCatId && !matchNoteLabel && !matchNoteId) {
+          return false;
+        }
+      }
+
+      // 4. Operation filter (Income vs Expense)
       const inc = task.financials?.income || 0;
       const exp = task.financials?.expense || 0;
 
       if (operationType === 'income' && inc <= 0) return false;
       if (operationType === 'expense' && exp <= 0) return false;
 
-      // 4. Search query
+      // 5. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchTitle = task.title.toLowerCase().includes(q);
         const matchNote = (task.financials?.note || '').toLowerCase().includes(q);
         const matchDesc = (task.description || '').toLowerCase().includes(q);
-        if (!matchTitle && !matchNote && !matchDesc) return false;
+        const matchExpCat = task.financials?.expenseCategory
+          ? getExpenseCategoryLabel(task.financials.expenseCategory).toLowerCase().includes(q)
+          : false;
+        if (!matchTitle && !matchNote && !matchDesc && !matchExpCat) return false;
       }
 
       return true;
     });
-  }, [tasks, periodPreset, customStartDate, customEndDate, selectedCategory, operationType, searchQuery]);
+  }, [tasks, periodPreset, customStartDate, customEndDate, selectedCategory, selectedExpenseCategory, operationType, searchQuery]);
 
   // Financial summary for filtered tasks
   const stats = useMemo(() => {
@@ -199,14 +224,36 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
     }));
   }, [stats]);
 
-  // Pie chart data
+  // Pie chart data: for expenses, calculate breakdown by expense categories
   const expensePieData = useMemo(() => {
-    return [
-      { name: 'Учеба', value: stats.byCategory.study?.expense || 0, color: '#0ea5e9' },
-      { name: 'Работа', value: stats.byCategory.work?.expense || 0, color: '#10b981' },
-      { name: 'Иное', value: stats.byCategory.other?.expense || 0, color: '#8b5cf6' },
-    ].filter((d) => d.value > 0);
-  }, [stats]);
+    const byExpCategory: Record<string, number> = {};
+    const palette = [
+      '#f43f5e', '#fb923c', '#f59e0b', '#10b981', '#06b6d4',
+      '#3b82f6', '#8b5cf6', '#d946ef', '#ec4899', '#14b8a6', '#64748b'
+    ];
+
+    filteredTasks.forEach((t) => {
+      const exp = t.financials?.expense || 0;
+      if (exp <= 0) return;
+
+      const catId = t.financials?.expenseCategory;
+      let label = 'Прочее';
+      if (catId) {
+        label = getExpenseCategoryLabel(catId);
+      } else if (t.financials?.note) {
+        label = getExpenseCategoryLabel(t.financials.note);
+      }
+
+      byExpCategory[label] = (byExpCategory[label] || 0) + exp;
+    });
+
+    const entries = Object.entries(byExpCategory);
+    return entries.map(([name, value], idx) => ({
+      name,
+      value,
+      color: palette[idx % palette.length],
+    })).filter((d) => d.value > 0);
+  }, [filteredTasks]);
 
   const incomePieData = useMemo(() => {
     return [
@@ -482,16 +529,32 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
           {/* Second Row: Category & Operation Type filters */}
           <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
-              {/* Category selector */}
+              {/* Activity Category selector */}
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value as any)}
                 className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 shadow-xs cursor-pointer"
+                title="Фильтр по типу активности"
               >
-                <option value="all">Все категории</option>
+                <option value="all">Все активности</option>
                 <option value="study">Учеба</option>
                 <option value="work">Работа</option>
                 <option value="other">Иное</option>
+              </select>
+
+              {/* Expense Category selector */}
+              <select
+                value={selectedExpenseCategory}
+                onChange={(e) => setSelectedExpenseCategory(e.target.value)}
+                className="bg-white border border-rose-300 rounded-xl px-3 py-1.5 font-bold text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600 shadow-xs cursor-pointer"
+                title="Фильтр по категории расходов"
+              >
+                <option value="all">Все категории трат</option>
+                {EXPENSE_CATEGORIES.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.emoji ? `${cat.emoji} ` : ''}{cat.label}
+                  </option>
+                ))}
               </select>
 
               {/* Operation type selector */}
@@ -906,13 +969,22 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
                         <div className="text-xs font-bold text-slate-900 truncate">
                           {task.title}
                         </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                        <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span>{format(parseISO(task.date), 'd MMMM yyyy', { locale: ru })}</span>
                           <span>•</span>
                           <span className="capitalize font-semibold text-slate-700">
                             {task.category === 'study' ? 'Учеба' : task.category === 'work' ? 'Работа' : 'Иное'}
                           </span>
-                          {task.financials?.note && (
+                          {exp > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <Receipt className="w-2.5 h-2.5" />
+                                {getExpenseCategoryLabel(task.financials?.expenseCategory || task.financials?.note)}
+                              </span>
+                            </>
+                          )}
+                          {task.financials?.note && exp <= 0 && (
                             <>
                               <span>•</span>
                               <span className="italic text-slate-400 truncate">{task.financials.note}</span>

@@ -44,3 +44,30 @@ export const STATUS_LABELS: Record<string, { label: string; color: string; bg: s
   completed: { label: 'Выполнено', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
   cancelled: { label: 'Отменено', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' },
 };
+
+export interface ExpenseCategoryOption {
+  id: string;
+  label: string;
+  emoji?: string;
+}
+
+export const EXPENSE_CATEGORIES: ExpenseCategoryOption[] = [
+  { id: 'food', label: 'Питание', emoji: '🍔' },
+  { id: 'transport', label: 'Транспорт', emoji: '🚌' },
+  { id: 'scooter', label: 'Самокат', emoji: '🛴' },
+  { id: 'entertainment', label: 'Развлечения', emoji: '🍿' },
+  { id: 'telecom_vpn', label: 'Связь и VPN', emoji: '📡' },
+  { id: 'clothing', label: 'Одежда', emoji: '👕' },
+  { id: 'wb_other', label: 'WB и прочее', emoji: '📦' },
+  { id: 'impulse', label: 'Импульс', emoji: '⚡' },
+  { id: 'mistake', label: 'Ошибка', emoji: '⚠️' },
+  { id: 'charity', label: 'Благотворительность', emoji: '🤍' },
+  { id: 'other', label: 'Прочее', emoji: '📁' },
+];
+
+export function getExpenseCategoryLabel(catIdOrNote?: string): string {
+  if (!catIdOrNote) return 'Прочее';
+  const found = EXPENSE_CATEGORIES.find((c) => c.id === catIdOrNote || c.label.toLowerCase() === catIdOrNote.toLowerCase());
+  if (found) return found.label;
+  return catIdOrNote;
+}
