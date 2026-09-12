@@ -4,7 +4,7 @@ import React from 'react';
 import { TaskItem, UserRole } from '@/types';
 import { formatCurrency, getCategoryConfig, HOURS_24 } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Clock, Plus, CheckCircle2, Circle, Calendar } from 'lucide-react';
+import { Clock, Plus, CheckCircle2, Circle, Calendar, Wallet } from 'lucide-react';
 
 interface DayViewProps {
   currentDate: Date;
@@ -13,6 +13,8 @@ interface DayViewProps {
   onSelectTask: (task: TaskItem) => void;
   onToggleStatus: (task: TaskItem, e: React.MouseEvent) => void;
   onAddNewTaskAtHour?: (hour: string) => void;
+  onAddNewTask?: () => void;
+  onOpenMoneyModal?: (mode: 'base' | 'income' | 'expense') => void;
 }
 
 export const DayView: React.FC<DayViewProps> = ({
@@ -22,6 +24,8 @@ export const DayView: React.FC<DayViewProps> = ({
   onSelectTask,
   onToggleStatus,
   onAddNewTaskAtHour,
+  onAddNewTask,
+  onOpenMoneyModal,
 }) => {
   const dateStr = format(currentDate, 'yyyy-MM-dd');
   const dayTasks = tasks.filter((t) => t.date === dateStr);
@@ -220,6 +224,33 @@ export const DayView: React.FC<DayViewProps> = ({
           );
         })}
       </div>
+
+      {/* Action Buttons at the Bottom of Day View */}
+      {!isGuest && (
+        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2.5">
+          {onAddNewTask && (
+            <button
+              type="button"
+              onClick={onAddNewTask}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Добавить дело</span>
+            </button>
+          )}
+
+          {onOpenMoneyModal && (
+            <button
+              type="button"
+              onClick={() => onOpenMoneyModal('expense')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95"
+            >
+              <Wallet className="w-4 h-4 text-slate-700" />
+              <span>Добавить финансы</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -4,7 +4,7 @@ import React from 'react';
 import { TaskItem, UserRole } from '@/types';
 import { formatCurrency, getCategoryConfig, getMonthGrid } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Plus } from 'lucide-react';
+import { Plus, Wallet } from 'lucide-react';
 
 interface MonthViewProps {
   currentDate: Date;
@@ -13,6 +13,7 @@ interface MonthViewProps {
   onSelectTask: (task: TaskItem) => void;
   onSelectDay: (day: Date) => void;
   onAddNewTaskOnDate?: (dateStr: string) => void;
+  onOpenMoneyModal?: (mode: 'base' | 'income' | 'expense') => void;
 }
 
 const WEEKDAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -24,6 +25,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
   onSelectTask,
   onSelectDay,
   onAddNewTaskOnDate,
+  onOpenMoneyModal,
 }) => {
   const monthDays = getMonthGrid(currentDate);
   const isGuest = userRole === 'guest';
@@ -128,17 +130,37 @@ export const MonthView: React.FC<MonthViewProps> = ({
                 )}
               </div>
 
-              {/* Quick Add indicator on hover */}
-              {!isGuest && onAddNewTaskOnDate && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddNewTaskOnDate(dateStr);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 self-end text-[10px] text-slate-500 hover:text-slate-900 p-0.5 rounded hover:bg-slate-200 transition-opacity"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
+              {/* Quick Add buttons on hover */}
+              {!isGuest && (
+                <div className="opacity-0 group-hover:opacity-100 self-end flex items-center gap-1 transition-opacity pt-1">
+                  {onAddNewTaskOnDate && (
+                    <button
+                      type="button"
+                      title="Добавить дело"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddNewTaskOnDate(dateStr);
+                      }}
+                      className="p-1 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {onOpenMoneyModal && (
+                    <button
+                      type="button"
+                      title="Добавить финансы"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenMoneyModal('expense');
+                      }}
+                      className="p-1 rounded-md text-rose-600 hover:text-rose-900 hover:bg-rose-100 transition-colors"
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           );

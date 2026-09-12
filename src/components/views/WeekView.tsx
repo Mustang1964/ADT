@@ -4,7 +4,7 @@ import React from 'react';
 import { TaskItem, UserRole } from '@/types';
 import { formatCurrency, getCategoryConfig, getWeekDays, formatDateRu } from '@/lib/utils';
 import { format, isSameDay } from 'date-fns';
-import { Plus, CheckCircle2, Circle, Clock } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Clock, Wallet } from 'lucide-react';
 
 interface WeekViewProps {
   currentDate: Date;
@@ -14,6 +14,7 @@ interface WeekViewProps {
   onSelectDay: (day: Date) => void;
   onToggleStatus: (task: TaskItem, e: React.MouseEvent) => void;
   onAddNewTaskOnDate?: (dateStr: string) => void;
+  onOpenMoneyModal?: (mode: 'base' | 'income' | 'expense') => void;
 }
 
 export const WeekView: React.FC<WeekViewProps> = ({
@@ -24,6 +25,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
   onSelectDay,
   onToggleStatus,
   onAddNewTaskOnDate,
+  onOpenMoneyModal,
 }) => {
   const weekDays = getWeekDays(currentDate);
   const today = new Date();
@@ -187,15 +189,32 @@ export const WeekView: React.FC<WeekViewProps> = ({
                 )}
               </div>
 
-              {/* Add button at bottom */}
-              {!isGuest && onAddNewTaskOnDate && (
-                <div className="p-2 border-t border-slate-100">
-                  <button
-                    onClick={() => onAddNewTaskOnDate(dateStr)}
-                    className="w-full py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" /> Добавить
-                  </button>
+              {/* Add buttons at bottom of day card */}
+              {!isGuest && (
+                <div className="p-2 border-t border-slate-100 flex items-center gap-1.5">
+                  {onAddNewTaskOnDate && (
+                    <button
+                      type="button"
+                      onClick={() => onAddNewTaskOnDate(dateStr)}
+                      className="flex-1 py-1.5 px-2 text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-slate-100/70 hover:bg-slate-200/80 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      title="Добавить дело на этот день"
+                    >
+                      <Plus className="w-3 h-3 text-slate-800" />
+                      <span>Дело</span>
+                    </button>
+                  )}
+
+                  {onOpenMoneyModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenMoneyModal('expense')}
+                      className="flex-1 py-1.5 px-2 text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100/80 border border-rose-200/60 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      title="Добавить финансы"
+                    >
+                      <Wallet className="w-3 h-3 text-rose-600" />
+                      <span>Финансы</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

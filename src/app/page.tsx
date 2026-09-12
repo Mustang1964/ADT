@@ -417,6 +417,8 @@ export default function DashboardPage() {
               onSelectTask={handleSelectTask}
               onToggleStatus={handleToggleStatus}
               onAddNewTaskAtHour={(hour) => handleOpenNewTask(undefined, hour)}
+              onAddNewTask={() => handleOpenNewTask()}
+              onOpenMoneyModal={handleOpenMoneyModal}
             />
           )}
 
@@ -429,6 +431,7 @@ export default function DashboardPage() {
               onSelectDay={handleSelectDay}
               onToggleStatus={handleToggleStatus}
               onAddNewTaskOnDate={(dateStr) => handleOpenNewTask(dateStr)}
+              onOpenMoneyModal={handleOpenMoneyModal}
             />
           )}
 
@@ -440,6 +443,7 @@ export default function DashboardPage() {
               onSelectTask={handleSelectTask}
               onSelectDay={handleSelectDay}
               onAddNewTaskOnDate={(dateStr) => handleOpenNewTask(dateStr)}
+              onOpenMoneyModal={handleOpenMoneyModal}
             />
           )}
 
